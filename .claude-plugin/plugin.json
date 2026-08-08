@@ -1,10 +1,20 @@
 {
   "name": "friction-skill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strip the machine layer from English technical prose with the friction CLI: apply its deterministic fixes, then revise the constructions it can only detect.",
-  "author": { "name": "ngriaznov", "url": "https://github.com/ngriaznov" },
+  "author": {
+    "name": "ngriaznov",
+    "url": "https://github.com/ngriaznov"
+  },
   "homepage": "https://friction-cli.dev",
   "repository": "https://github.com/ngriaznov/friction-skill",
   "license": "MIT",
-  "keywords": ["prose", "llm", "documentation", "lint", "technical-writing", "friction"]
+  "keywords": [
+    "prose",
+    "llm",
+    "documentation",
+    "lint",
+    "technical-writing",
+    "friction"
+  ]
 }

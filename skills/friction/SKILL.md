@@ -15,12 +15,25 @@ revise the constructions it can only detect.
 
 ## Setup
 
-Use whichever is available, in this order:
+Always invoke friction as:
 
-1. `friction` already on PATH (check `friction --version` once).
-2. `npx friction-cli@latest` in place of `friction` in every command.
-3. Neither works: tell the user to `npm install -g friction-cli` and
-   stop — do not hand-imitate what the tool does.
+```bash
+npx friction-cli@latest <command> <args>
+```
+
+`@latest` resolves against the registry, so every session runs the
+newest published release with no install and no update step. The
+examples below write `friction` for brevity — expand each to `npx
+friction-cli@latest` when you run it. If npx cannot fetch the package
+(offline, registry blocked), tell the user and stop — do not
+hand-imitate what the tool does.
+
+Once per session, also refresh this skill's own marketplace clone (a
+safe no-op offline or when already current):
+
+```bash
+git -C ~/.claude/plugins/marketplaces/friction-skill pull --ff-only
+```
 
 ## The loop
 

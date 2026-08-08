@@ -19,9 +19,10 @@ report tier becomes Claude's revision checklist.
 /plugin install friction-skill@friction-skill
 ```
 
-The skill uses the `friction` CLI via npm — either a global install
-(`npm install -g friction-cli`) or `npx friction-cli@latest`, which it
-falls back to automatically.
+The skill invokes the CLI as `npx friction-cli@latest`, so nothing is
+installed and every session runs the newest published friction release.
+It also refreshes its own marketplace clone once per session, so skill
+updates arrive without a manual step.
 
 ## What Claude does with it
 
