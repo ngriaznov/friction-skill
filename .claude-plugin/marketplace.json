@@ -1,0 +1,11 @@
+{
+  "name": "friction-skill",
+  "owner": { "name": "ngriaznov", "url": "https://github.com/ngriaznov" },
+  "plugins": [
+    {
+      "name": "friction-skill",
+      "source": "./",
+      "description": "Strip the machine layer from English technical prose with the friction CLI: apply its deterministic fixes, then revise the constructions it can only detect."
+    }
+  ]
+}
