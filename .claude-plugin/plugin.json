@@ -1,9 +1,9 @@
 {
   "name": "friction-skill",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Strip the machine layer from English technical prose with the friction CLI: apply its deterministic fixes, then revise the constructions it can only detect.",
   "author": {
-    "name": "ngriaznov",
+    "name": "Mykyta Hriaznov",
     "url": "https://github.com/ngriaznov"
   },
   "homepage": "https://friction-cli.dev",
