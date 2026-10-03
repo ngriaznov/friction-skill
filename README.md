@@ -41,6 +41,22 @@ Reference sheets cover the rest of the surface: `friction check` with
 genre envelopes and SARIF, `friction explain` provenance, `--residual`,
 stdin snippets, and HTML input.
 
+## friction-replies: the same fixes on chat replies
+
+The skill runs friction on deliverables. Chat replies are out of its
+scope, so this marketplace also carries
+[friction-replies](plugins/friction-replies), a Claude Code mod that runs
+`friction fix` on every reply before Claude Code stores it. The model,
+the transcript, and the screen all get the fixed text. Install it on its
+own or beside the skill:
+
+```
+/plugin install friction-replies@friction-skill
+```
+
+`/friction-replies check` counts what it would change without changing
+anything, and `/friction-replies off` stops it for the session.
+
 ## Scope
 
 English technical prose only: friction is inert on other languages and

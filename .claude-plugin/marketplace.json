@@ -1,11 +1,19 @@
 {
   "name": "friction-skill",
-  "owner": { "name": "ngriaznov", "url": "https://github.com/ngriaznov" },
+  "owner": {
+    "name": "ngriaznov",
+    "url": "https://github.com/ngriaznov"
+  },
   "plugins": [
     {
       "name": "friction-skill",
       "source": "./",
       "description": "Strip the machine layer from English technical prose with the friction CLI: apply its deterministic fixes, then revise the constructions it can only detect."
+    },
+    {
+      "name": "friction-replies",
+      "source": "./plugins/friction-replies",
+      "description": "Runs friction on Claude's chat replies: its deterministic fixes for LLM prose tells, applied before each reply is stored."
     }
   ]
 }

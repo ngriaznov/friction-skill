@@ -12,3 +12,11 @@ stdout-vs-`--in-place` discipline). Written against friction 0.6.0.
 The CLI is always invoked as `npx friction-cli@latest` (no install, no
 update step, always the newest release), and the skill refreshes its own
 marketplace clone once per session so skill updates arrive on their own.
+
+## friction-replies 0.1.0
+
+A second plugin in the marketplace: a Claude Code mod that pipes each
+text block of Claude's reply through `friction fix` before the reply is
+stored. `/friction-replies` shows the last change as a word diff and
+switches between `fix`, `check`, and `off`. Written against friction
+0.6.17 and Claude Code 2.1.288's function-hooks API.
