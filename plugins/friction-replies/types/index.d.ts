@@ -33,6 +33,8 @@ declare module 'claude-code' {
       mode: FrictionMode | null
       runs: FrictionRun[]
       totals: FrictionTotals
+      /** Per reply row: whether its word diff is shown under it. */
+      isOpen: StateFamily<boolean>
     }
   }
 }

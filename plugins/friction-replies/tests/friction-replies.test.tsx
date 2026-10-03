@@ -108,7 +108,7 @@ describe('fix mode', () => {
       { type: 'text', text: 'The agent uses the cache to go fast.' },
       { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } },
     ])
-    expect(status.at(-1)).toBe('friction: 2 edits')
+    expect(status.at(-1)).toBeUndefined()
   })
 
   test("keeps the block's leading and trailing whitespace", async ($, on) => {
@@ -156,28 +156,6 @@ describe('fix mode', () => {
     expect(text).toContain('last change: 2 edits (sub.apply ×2)')
     expect(text).toContain('The agent [-leverages-]{+uses+} the cache [-in order-] to go fast.')
   })
-
-  test('draws the fixed text where the screen still holds the original', async ($, on) => {
-    fakeFriction(on)
-    const { stored } = harness(on)
-    on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
-      const { Text } = $.ui.resolve(e)
-
-      return <Text>{e.props.text}</Text>
-    })
-    await append($, stored, reply('The agent leverages the cache.'))
-
-    for (const surface of ['terminal', 'desktop'] as const) {
-      const ui = await $.ui.mount({
-        plugin: 'friction-replies',
-        surface,
-        component: 'AssistantMessage',
-        props: { text: 'The agent leverages the cache.', isFirstOfReply: true },
-      })
-      expect((await ui.find({ type: 'Text' }))?.text).toBe('The agent uses the cache.')
-      await ui.unmount()
-    }
-  })
 })
 
 describe('leaving replies as written', () => {
@@ -217,24 +195,109 @@ describe('leaving replies as written', () => {
 
   test('a failing run keeps the reply and is counted', async ($, on) => {
     fakeFriction(on, { fails: true })
-    const { stored } = harness(on)
+    const { stored, status } = harness(on)
 
     const content = await append($, stored, reply('It leverages the cache.'))
     const { text } = await friction($)
 
     expect(content[0]).toEqual({ type: 'text', text: 'It leverages the cache.' })
     expect(text).toContain('1 failed')
+    expect(status.at(-1)).toBe('friction failed on 1 reply, see /friction-replies')
   })
 
   test('with no friction installed the reply passes through', async ($, on) => {
     fakeFriction(on, { missing: true })
-    const { stored } = harness(on)
+    const { stored, status } = harness(on)
 
     const content = await append($, stored, reply('It leverages the cache.'))
     const { text } = await friction($)
 
     expect(content[0]).toEqual({ type: 'text', text: 'It leverages the cache.' })
     expect(text).toContain('runs: nothing found')
+    expect(status.at(-1)).toBe('friction not found, see /friction-replies')
+  })
+})
+
+// Stands in for the engine's own drawing of a reply.
+function engineDraws(on: On) {
+  on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>{e.props.text}</Text>
+  })
+}
+
+const SURFACES = ['terminal', 'desktop'] as const
+
+const mountReply = ($: Engine, surface: (typeof SURFACES)[number], text: string) =>
+  $.ui.mount({ plugin: 'friction-replies', surface, component: 'AssistantMessage', props: { text, isFirstOfReply: true } })
+
+describe('the line under a changed reply', () => {
+  test('draws the fixed text and a faint count', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    engineDraws(on)
+    await append($, stored, reply('The agent leverages the cache in order to go fast.'))
+
+    for (const surface of SURFACES) {
+      // The screen may hold the reply as it streamed, or as stored.
+      for (const text of ['The agent leverages the cache in order to go fast.', 'The agent uses the cache to go fast.']) {
+        const ui = await mountReply($, surface, text)
+        expect((await ui.find({ type: 'Text', text: 'The agent uses the cache to go fast.' }))?.text).toBe(
+          'The agent uses the cache to go fast.',
+        )
+        expect((await ui.find({ type: 'Text', text: /^friction · / }))?.text).toBe('friction · 2 edits · ')
+        expect((await ui.find({ key: 'changes' }))?.text).toBe('show changes')
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('show changes opens the word diff and hide changes closes it', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    engineDraws(on)
+    await append($, stored, reply('The agent leverages the cache.'))
+
+    for (const surface of SURFACES) {
+      const ui = await mountReply($, surface, 'The agent uses the cache.')
+      expect(await ui.find({ type: 'Text', text: '[-leverages-]' })).toBeUndefined()
+
+      await ui.press({ key: 'changes' })
+      expect((await ui.find({ type: 'Text', text: '[-leverages-]' }))?.text).toBe('The agent [-leverages-]{+uses+} the cache.')
+      expect((await ui.find({ key: 'changes' }))?.text).toBe('hide changes')
+
+      await ui.press({ key: 'changes' })
+      expect(await ui.find({ type: 'Text', text: '[-leverages-]' })).toBeUndefined()
+      await ui.unmount()
+    }
+  })
+
+  test('check mode counts possible edits under the reply as written', { options: { mode: 'check' } }, async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    engineDraws(on)
+    await append($, stored, reply('It leverages the cache.'))
+
+    for (const surface of SURFACES) {
+      const ui = await mountReply($, surface, 'It leverages the cache.')
+      expect(await ui.find({ type: 'Text', text: 'It leverages the cache.' })).toBeDefined()
+      expect((await ui.find({ type: 'Text', text: /^friction · / }))?.text).toBe('friction · 1 possible edit · ')
+      await ui.unmount()
+    }
+  })
+
+  test('a reply friction left alone draws as the engine draws it', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    engineDraws(on)
+    await append($, stored, reply('Nothing here needs fixing.'))
+
+    for (const surface of SURFACES) {
+      const ui = await mountReply($, surface, 'Nothing here needs fixing.')
+      expect(await ui.drawn()).toEqual({ type: 'Text', children: ['Nothing here needs fixing.'] })
+      await ui.unmount()
+    }
   })
 })
 

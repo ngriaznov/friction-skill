@@ -1,4 +1,4 @@
-import { atom, read, update } from 'claude-code'
+import { atom, memberOf, read, update } from 'claude-code'
 import type { Args, EngineInterface, Register } from 'claude-code'
 
 import type { FrictionMode, FrictionRun, FrictionTotals } from '../types'
@@ -25,6 +25,7 @@ const PROBE_TIMEOUT_MS = 180_000
 
 const mode = atom({ plugin: 'friction-replies', key: 'mode' } as const, null)
 const runs = atom({ plugin: 'friction-replies', key: 'runs' } as const, [])
+const isOpen = atom({ plugin: 'friction-replies', key: 'isOpen' } as const, false)
 const totals = atom({ plugin: 'friction-replies', key: 'totals' } as const, {
   blocks: 0,
   changed: 0,
@@ -107,13 +108,13 @@ async function currentMode($: EngineInterface, fallback: FrictionMode): Promise<
   return (await read($, mode)) ?? fallback
 }
 
+// The status line is a pinned warning on every surface, so it carries only
+// trouble; the line under each changed reply carries the edits.
 async function showStatus($: EngineInterface, fallback: FrictionMode): Promise<void> {
   const now = await currentMode($, fallback)
   const sum = await read($, totals)
-  if (now === 'off') return $.ui.status(undefined)
-  const edits = `${sum.patches} edit${sum.patches === 1 ? '' : 's'}`
-  const failed = sum.failures > 0 ? ` · ${sum.failures} failed` : ''
-  $.ui.status(now === 'fix' ? `friction: ${edits}${failed}` : `friction (check): ${edits} possible${failed}`)
+  if (now === 'off' || sum.failures === 0) return $.ui.status(undefined)
+  $.ui.status(`friction failed on ${sum.failures} repl${sum.failures === 1 ? 'y' : 'ies'}, see /friction-replies`)
 }
 
 async function report($: EngineInterface, configured: string, fallback: FrictionMode): Promise<string> {
@@ -208,7 +209,7 @@ async function rewrite($: EngineInterface, e: Append, settings: Settings): Promi
 
   const found = await resolveCommand($, settings.configured)
   if (found === null) {
-    $.ui.status('friction: not found, see /friction-replies')
+    $.ui.status('friction not found, see /friction-replies')
 
     return undefined
   }
@@ -251,12 +252,46 @@ export const register: Register = (on, options) => {
   )
 
   // The stored row carries the fixed text; this keeps the screen on it too,
-  // where the transcript drew the reply as it streamed in.
+  // and marks each reply friction changed with one faint line under it.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const shown = e.props.text.trim()
-    const hit = (await read($, runs)).findLast(run => run.isApplied && run.before.trim() === shown)
+    const hit = (await read($, runs)).findLast(run => run.before.trim() === shown || run.after.trim() === shown)
+    if (hit === undefined) return next(e)
 
-    return hit ? next({ ...e, props: { ...e.props, text: hit.after.trim() } }) : next(e)
+    const drawn = await next(hit.isApplied ? { ...e, props: { ...e.props, text: hit.after.trim() } } : e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const open = memberOf(isOpen, e)
+    const isShown = await read($, open)
+    // No count when friction's summary did not parse: the text still changed.
+    const edits =
+      hit.patches === 0
+        ? 'changed'
+        : `${hit.patches} ${hit.isApplied ? '' : 'possible '}edit${hit.patches === 1 ? '' : 's'}`
+
+    return (
+      <Box flexDirection="column">
+        {drawn}
+        <Box marginLeft={2}>
+          <Text color="subtle">
+            friction · {edits} ·{' '}
+          </Text>
+          <Button
+            key="changes"
+            plain
+            dimColor
+            label={isShown ? 'hide changes' : 'show changes'}
+            onPress={() => update($, open, value => !value)}
+          />
+        </Box>
+        {isShown && (
+          <Box marginLeft={2}>
+            <Text color="subtle">
+              {wordDiff(hit.before, hit.after)}
+            </Text>
+          </Box>
+        )}
+      </Box>
+    )
   })
 
   on('command.run', { command: 'friction-replies' }, async ($, e) => {

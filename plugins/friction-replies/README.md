@@ -38,9 +38,20 @@ To run it from a checkout instead: `claude --plugin-dir
 | `/friction-replies check` | count what friction would change and change nothing |
 | `/friction-replies off` | stop for this session |
 
-The status line keeps a running count: `friction: 12 edits`.
+Each reply friction changed gets one faint line under it. Pressing
+**show changes** opens the word diff of that reply in place, and **hide
+changes** closes it:
 
-`/friction-replies` shows the last change as a word diff:
+![A rewritten reply in Claude Code with a faint "friction · 5 edits · show changes" line under it](assets/line.png)
+
+![The same reply with its word diff open under the line](assets/line-open.png)
+
+The line uses the theme's faintest color, so it stays faint in light and
+dark themes. Terminal text has one size, so it is faint, not small. The
+status line under the prompt appears only when friction fails or is
+missing.
+
+`/friction-replies` shows the last change as a word diff too:
 
 ```
 last change: 5 edits (edit.recapitalize ×1, pivot.lvc ×1, span.delete ×1, sub.apply ×2)

@@ -20,3 +20,10 @@ text block of Claude's reply through `friction fix` before the reply is
 stored. `/friction-replies` shows the last change as a word diff and
 switches between `fix`, `check`, and `off`. Written against friction
 0.6.17 and Claude Code 2.1.288's function-hooks API.
+
+## friction-replies 0.1.1
+
+Each reply friction changed gets one faint line under it, `friction · 5
+edits · show changes`, and pressing it opens the reply's word diff in
+place. The status line, which Claude Code draws as a pinned warning, now
+appears only when friction fails or is missing.
