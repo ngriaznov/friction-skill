@@ -24,7 +24,7 @@ const CODE = /(```[\s\S]*?```|`[^`]*`)/
 // outside code as friction makes them (or everywhere, `mangles`), its JSON
 // summary on stderr, and (like npx) a notice around it. Trims its output so
 // the tests see the mod put the block's own edges back.
-function fakeFriction(on: On, { fails = false, missing = false, mangles = false } = {}) {
+function fakeFriction(on: On, { fails = false, missing = false, mangles = false, respaces = false } = {}) {
   const calls: string[][] = []
   on('process.run', async ($, e) => {
     calls.push([...e.argv])
@@ -51,6 +51,7 @@ function fakeFriction(on: On, { fails = false, missing = false, mangles = false 
           .split(CODE)
           .map((part, i) => (i % 2 === 1 ? part : fix(part)))
           .join('')
+          .replace(/ {2,}/g, respaces ? ' ' : '$&')
     const summary = { passes: 1, patches_applied: patches, patches_by_rule: byRule, suggest_count: 0, paraphrase_count: 0 }
 
     return result(0, text.trim(), `npm warn exec notice\n${JSON.stringify(summary, null, 2)}\n`)
@@ -243,8 +244,15 @@ function engineDraws(on: On) {
 
 const SURFACES = ['terminal', 'desktop'] as const
 
-const mountReply = ($: Engine, surface: (typeof SURFACES)[number], text: string) =>
-  $.ui.mount({ plugin: 'friction-replies', surface, component: 'AssistantMessage', props: { text, isFirstOfReply: true } })
+// A reply on screen: `requestId` is the stored row's id, as in a session.
+const mountReply = ($: Engine, surface: (typeof SURFACES)[number], text: string, requestId = 'row-1') =>
+  $.ui.mount({
+    plugin: 'friction-replies',
+    surface,
+    component: 'AssistantMessage',
+    requestId,
+    props: { text, isFirstOfReply: true },
+  })
 
 describe('the line under a changed reply', () => {
   test('draws the fixed text and a faint count', async ($, on) => {
@@ -297,6 +305,39 @@ describe('the line under a changed reply', () => {
       const ui = await mountReply($, surface, 'It leverages the cache.')
       expect(await ui.find({ type: 'Text', text: 'It leverages the cache.' })).toBeDefined()
       expect((await ui.find({ type: 'Text', text: /^friction · / }))?.text).toBe('friction · 1 possible edit · ')
+      await ui.unmount()
+    }
+  })
+
+  test('another reply that reads the same as a changed one gets no line', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    engineDraws(on)
+    await append($, stored, reply('The agent leverages the cache.'))
+    await append($, stored, reply('The agent uses the cache.', { uuid: 'row-2' }))
+
+    for (const surface of SURFACES) {
+      for (const text of ['The agent leverages the cache.', 'The agent uses the cache.']) {
+        const ui = await mountReply($, surface, text, 'row-2')
+        expect(await ui.drawn()).toEqual({ type: 'Text', children: [text] })
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('output that differs only in spacing is no change and draws no line', async ($, on) => {
+    fakeFriction(on, { respaces: true })
+    const { stored } = harness(on)
+    engineDraws(on)
+
+    const content = await append($, stored, reply('Nothing  here needs  fixing.'))
+    const { text } = await friction($)
+
+    expect(content[0]).toEqual({ type: 'text', text: 'Nothing  here needs  fixing.' })
+    expect(text).toContain('replies: 1 read, 0 changed, 0 edits')
+    for (const surface of SURFACES) {
+      const ui = await mountReply($, surface, 'Nothing  here needs  fixing.')
+      expect(await ui.drawn()).toEqual({ type: 'Text', children: ['Nothing  here needs  fixing.'] })
       await ui.unmount()
     }
   })

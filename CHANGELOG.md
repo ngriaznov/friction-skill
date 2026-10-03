@@ -37,3 +37,11 @@ come back byte for byte or the block is stored as Claude wrote it. Reply
 blocks that are all code no longer reach friction. Before this,
 `utilize_cache` in prose came back as `use _cache`, and paths and bare
 URLs lost words to substitutions.
+
+## friction-replies 0.1.3
+
+The line shows only under the reply friction changed. It was found by the
+reply's text, so a later reply reading the same as a changed one got a
+line too; it is now tied to the stored row's id. Output that differs from
+the reply only in spacing counts as no change: the reply is stored as
+written, with no line.

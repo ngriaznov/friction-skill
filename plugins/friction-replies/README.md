@@ -38,9 +38,10 @@ To run it from a checkout instead: `claude --plugin-dir
 | `/friction-replies check` | count what friction would change and change nothing |
 | `/friction-replies off` | stop for this session |
 
-Each reply friction changed gets one faint line under it. Pressing
-**show changes** opens the word diff of that reply in place, and **hide
-changes** closes it:
+Each reply friction changed gets one faint line under it, and only that
+reply: one friction left as it was, or changed only in spacing, gets
+none. Pressing **show changes** opens the word diff of that reply in
+place, and **hide changes** closes it:
 
 ![A rewritten reply in Claude Code with a faint "friction · 5 edits · show changes" line under it](assets/line.png)
 

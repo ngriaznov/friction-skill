@@ -56,6 +56,8 @@ function parseSummary(stderr: string): Summary {
   }
 }
 
+const squash = (text: string) => text.replace(/\s+/g, ' ').trim()
+
 // The fixed text keeps the original block's leading and trailing whitespace.
 function keepEdges(before: string, after: string): string {
   const lead = before.match(/^\s*/)?.[0] ?? ''
@@ -182,8 +184,9 @@ async function fixReply(
 
         return block
       }
-      // A block friction would delete whole stays: an empty text block is no reply.
-      if (after === block.text || after.trim() === '') return block
+      // A block friction would delete whole stays: an empty text block is no
+      // reply. Output that differs only in spacing is no change either.
+      if (after.trim() === '' || squash(after) === squash(block.text)) return block
       made.push({
         uuid: e.uuid,
         before: block.text,
@@ -275,8 +278,12 @@ export const register: Register = (on, options) => {
   // The stored row carries the fixed text; this keeps the screen on it too,
   // and marks each reply friction changed with one faint line under it.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    // Only the row friction changed: `requestId` is the stored row's id.
     const shown = e.props.text.trim()
-    const hit = (await read($, runs)).findLast(run => run.before.trim() === shown || run.after.trim() === shown)
+    const ofRow = (await read($, runs)).filter(run => run.uuid === e.requestId)
+    const hit =
+      ofRow.findLast(run => run.before.trim() === shown || run.after.trim() === shown) ??
+      (ofRow.length === 1 ? ofRow[0] : undefined)
     if (hit === undefined) return next(e)
 
     const drawn = await next(hit.isApplied ? { ...e, props: { ...e.props, text: hit.after.trim() } } : e)
