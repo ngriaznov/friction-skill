@@ -24,6 +24,8 @@ export type FrictionTotals = {
   patches: number
   /** Runs that failed and were passed through untouched. */
   failures: number
+  /** Reply blocks kept as written because friction's edits reached code. */
+  guarded: number
 }
 
 declare module 'claude-code' {

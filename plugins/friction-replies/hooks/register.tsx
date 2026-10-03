@@ -2,6 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { Args, EngineInterface, Register } from 'claude-code'
 
 import type { FrictionMode, FrictionRun, FrictionTotals } from '../types'
+import { protect, restore } from './code'
 import { wordDiff } from './diff'
 
 type Append = Args<'session.append'>
@@ -31,6 +32,7 @@ const totals = atom({ plugin: 'friction-replies', key: 'totals' } as const, {
   changed: 0,
   patches: 0,
   failures: 0,
+  guarded: 0,
 } satisfies FrictionTotals)
 
 const isMode = (value: unknown): value is FrictionMode =>
@@ -133,7 +135,8 @@ async function report($: EngineInterface, configured: string, fallback: Friction
       ? `runs: ${found.argv.join(' ')} (${found.version})`
       : 'runs: nothing found. Install it with `npm install -g friction-cli`, or set the command option.',
     `replies: ${sum.blocks} read, ${sum.changed} ${now === 'check' ? 'would change' : 'changed'}, ${sum.patches} edits` +
-      (sum.failures > 0 ? `, ${sum.failures} failed` : ''),
+      (sum.failures > 0 ? `, ${sum.failures} failed` : '') +
+      ((sum.guarded ?? 0) > 0 ? `, ${sum.guarded} kept as written because an edit reached code` : ''),
   ]
   if (last) {
     const rules = Object.entries(last.byRule)
@@ -155,21 +158,30 @@ async function fixReply(
   e: Append,
   now: 'fix' | 'check',
   argv: readonly string[],
-): Promise<{ content: Block[]; made: FrictionRun[]; scanned: number; failures: number }> {
+): Promise<{ content: Block[]; made: FrictionRun[]; scanned: number; failures: number; guarded: number }> {
   const made: FrictionRun[] = []
   let scanned = 0
   let failures = 0
+  let guarded = 0
   const content = await Promise.all(
     e.message.content.map(async block => {
       if (!isProse(block)) return block
+      const { masked, segments, hasProse } = protect(block.text)
+      if (!hasProse) return block
       scanned++
-      const out = await runFriction($, argv, block.text)
+      const out = await runFriction($, argv, masked)
       if ('error' in out) {
         failures++
 
         return block
       }
-      const after = keepEdges(block.text, out.text)
+      const after = restore(keepEdges(masked, out.text), segments)
+      // An edit that reached code keeps the whole block as written.
+      if (after === null) {
+        guarded++
+
+        return block
+      }
       // A block friction would delete whole stays: an empty text block is no reply.
       if (after === block.text || after.trim() === '') return block
       made.push({
@@ -186,15 +198,23 @@ async function fixReply(
     }),
   )
 
-  return { content, made, scanned, failures }
+  return { content, made, scanned, failures, guarded }
 }
 
-async function record($: EngineInterface, made: FrictionRun[], scanned: number, failures: number): Promise<void> {
+async function record(
+  $: EngineInterface,
+  made: FrictionRun[],
+  scanned: number,
+  failures: number,
+  guarded: number,
+): Promise<void> {
   await update($, totals, sum => ({
     blocks: sum.blocks + scanned,
     changed: sum.changed + made.length,
     patches: sum.patches + made.reduce((n, run) => n + run.patches, 0),
     failures: sum.failures + failures,
+    // A session that started on 0.1.1 holds totals without it.
+    guarded: (sum.guarded ?? 0) + guarded,
   }))
   if (made.length > 0) await update($, runs, list => [...list, ...made].slice(-RUNS_KEPT))
 }
@@ -205,7 +225,8 @@ type Settings = { configured: string; optionMode: FrictionMode; withSubagents: b
 async function rewrite($: EngineInterface, e: Append, settings: Settings): Promise<Append | undefined> {
   if (e.agentId !== undefined && !settings.withSubagents) return undefined
   const now = await currentMode($, settings.optionMode)
-  if (now === 'off' || !e.message.content.some(isProse)) return undefined
+  // A reply that is all code never reaches friction.
+  if (now === 'off' || !e.message.content.some(block => isProse(block) && protect(block.text).hasProse)) return undefined
 
   const found = await resolveCommand($, settings.configured)
   if (found === null) {
@@ -214,8 +235,8 @@ async function rewrite($: EngineInterface, e: Append, settings: Settings): Promi
     return undefined
   }
 
-  const { content, made, scanned, failures } = await fixReply($, e, now, found.argv)
-  await record($, made, scanned, failures)
+  const { content, made, scanned, failures, guarded } = await fixReply($, e, now, found.argv)
+  await record($, made, scanned, failures, guarded)
   if (made.length > 0 || failures > 0) await showStatus($, settings.optionMode)
 
   return now === 'fix' && made.length > 0 ? { ...e, message: { ...e.message, content } } : undefined

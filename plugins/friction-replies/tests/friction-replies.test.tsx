@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { Args, CommandRunResult, On, ProcessRunResult } from 'claude-code'
 
+import { protect, restore } from '../hooks/code'
 import { wordDiff } from '../hooks/diff'
 
 type Append = Args<'session.append'>
@@ -16,27 +17,40 @@ const result = (exitCode: number, stdout: string, stderr = ''): { value: Process
   value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
 })
 
-// Stands in for the friction binary: a couple of its substitutions, its JSON
+// Fenced blocks and inline code, which friction never edits.
+const CODE = /(```[\s\S]*?```|`[^`]*`)/
+
+// Stands in for the friction binary: a couple of its substitutions, made
+// outside code as friction makes them (or everywhere, `mangles`), its JSON
 // summary on stderr, and (like npx) a notice around it. Trims its output so
 // the tests see the mod put the block's own edges back.
-function fakeFriction(on: On, { fails = false, missing = false } = {}) {
+function fakeFriction(on: On, { fails = false, missing = false, mangles = false } = {}) {
   const calls: string[][] = []
   on('process.run', async ($, e) => {
     calls.push([...e.argv])
     if (missing) throw new Error(`spawn ${e.argv[0]} ENOENT`)
     if (e.argv.includes('--version')) return result(0, 'friction 0.6.18\n')
     if (fails) return result(2, '', 'error: the input failed to parse as markdown\n')
-    let text = e.init?.stdin ?? ''
     const byRule: Record<string, number> = {}
     let patches = 0
-    for (const [pattern, to, rule] of RULES) {
-      text = text.replace(pattern, () => {
-        patches++
-        byRule[rule] = (byRule[rule] ?? 0) + 1
+    const fix = (part: string) =>
+      RULES.reduce(
+        (done, [pattern, to, rule]) =>
+          done.replace(pattern, () => {
+            patches++
+            byRule[rule] = (byRule[rule] ?? 0) + 1
 
-        return to
-      })
-    }
+            return to
+          }),
+        part,
+      )
+    const stdin = e.init?.stdin ?? ''
+    const text = mangles
+      ? fix(stdin)
+      : stdin
+          .split(CODE)
+          .map((part, i) => (i % 2 === 1 ? part : fix(part)))
+          .join('')
     const summary = { passes: 1, patches_applied: patches, patches_by_rule: byRule, suggest_count: 0, paraphrase_count: 0 }
 
     return result(0, text.trim(), `npm warn exec notice\n${JSON.stringify(summary, null, 2)}\n`)
@@ -298,6 +312,87 @@ describe('the line under a changed reply', () => {
       expect(await ui.drawn()).toEqual({ type: 'Text', children: ['Nothing here needs fixing.'] })
       await ui.unmount()
     }
+  })
+})
+
+describe('code stays as written', () => {
+  test('code-like words in prose are left alone and the prose around them is fixed', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+
+    const content = await append(
+      $,
+      stored,
+      reply('It leverages utilize_cache in order to warm src/leverages/x.rs and https://x.dev/leverages.'),
+    )
+
+    expect(content[0]).toEqual({
+      type: 'text',
+      text: 'It uses utilize_cache to warm src/leverages/x.rs and https://x.dev/leverages.',
+    })
+  })
+
+  test('fenced and inline code come back byte for byte', async ($, on) => {
+    fakeFriction(on)
+    const { stored } = harness(on)
+    const fence = '```python\n# it leverages the cache in order to skip reads\nx = 1\n```'
+
+    const content = await append($, stored, reply(`It leverages \`leverages()\` in order to skip reads:\n\n${fence}\n`))
+
+    expect(content[0]).toEqual({ type: 'text', text: `It uses \`leverages()\` to skip reads:\n\n${fence}\n` })
+  })
+
+  test('an edit that reaches code keeps the whole block as written', async ($, on) => {
+    fakeFriction(on, { mangles: true })
+    const { stored } = harness(on)
+    const text = 'It leverages the cache:\n\n```js\nconst leverages = 1\n```\n'
+
+    const content = await append($, stored, reply(text))
+    const report = await friction($)
+
+    expect(content[0]).toEqual({ type: 'text', text })
+    expect(report.text).toContain('1 kept as written because an edit reached code')
+  })
+
+  test('a reply that is all code never reaches friction', async ($, on) => {
+    const calls = fakeFriction(on)
+    const { stored } = harness(on)
+
+    const content = await append($, stored, reply('```ts\nconst leverages = 1\n```'))
+
+    expect(content[0]).toEqual({ type: 'text', text: '```ts\nconst leverages = 1\n```' })
+    expect(calls).toEqual([])
+  })
+})
+
+describe('protect and restore', () => {
+  test('wrap code-like words, keep code spans, and leave links and abbreviations alone', () => {
+    const { masked, segments, hasProse } = protect(
+      'Run `x` and npm install --save left-pad, e.g. v0.6.18, with leverageCache() on std::fs; see [docs](https://x.dev/a_b).',
+    )
+
+    expect(hasProse).toBe(true)
+    expect(segments).toEqual(['`x`', '`\u2060npm install --save left-pad`', '`\u2060leverageCache()`', '`\u2060std::fs`'])
+    expect(masked).toBe(
+      'Run `x` and `\u2060npm install --save left-pad`, e.g. v0.6.18, with `\u2060leverageCache()` on `\u2060std::fs`; see [docs](https://x.dev/a_b).',
+    )
+    expect(restore(masked, segments)).toBe(
+      'Run `x` and npm install --save left-pad, e.g. v0.6.18, with leverageCache() on std::fs; see [docs](https://x.dev/a_b).',
+    )
+  })
+
+  test('a fence left open runs to the end, and prose outside it still counts', () => {
+    const { segments, hasProse } = protect('Here it is:\n\n```js\nconst a_b = 1\n')
+
+    expect(segments).toEqual(['```js\nconst a_b = 1\n'])
+    expect(hasProse).toBe(true)
+    expect(protect('```js\nconst a_b = 1\n```\n').hasProse).toBe(false)
+  })
+
+  test('a piece of code that did not come back fails the restore', () => {
+    const { masked, segments } = protect('Use `load()` in order to read it.')
+
+    expect(restore(masked.replace('load', 'read'), segments)).toBeNull()
   })
 })
 

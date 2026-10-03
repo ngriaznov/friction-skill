@@ -1,6 +1,6 @@
 {
   "name": "friction-replies",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Runs friction on Claude's chat replies: its deterministic fixes for LLM prose tells, applied before each reply is stored.",
   "author": {
     "name": "Mykyta Hriaznov",

@@ -58,6 +58,21 @@ last change: 5 edits (edit.recapitalize ×1, pivot.lvc ×1, span.delete ×1, sub
 [-It is important to note that the-]{+The+} agent [-leverages-]{+uses+} the cache [-in order-] to [-perform validation of-]{+validate+} the config file.
 ```
 
+## Code stays as written
+
+friction edits prose only. Before a reply reaches it, the mod marks every
+piece of code in the reply as code, and every piece must come back byte
+for byte:
+
+- fenced blocks and inline code, which friction never edits;
+- code written without backticks: identifiers (`utilize_cache`,
+  `leverageCache`, `std::fs`, `load()`), paths, URLs, `--flags`, and
+  command lines (`npm install --save left-pad`).
+
+If friction's output changes any of it anyway, the whole reply block is
+stored as Claude wrote it, and `/friction-replies` counts it. A reply
+block that is all code never reaches friction.
+
 ## Options
 
 Set them in `/config`, or under `pluginConfigs` in `settings.json`.
@@ -77,6 +92,11 @@ Set them in `/config`, or under `pluginConfigs` in `settings.json`.
 - A reply that quotes friction's phrases in plain prose gets them
   rewritten. Inside backticks they are safe. Use
   `/friction-replies off` while working on friction's own rules.
+- A plain word used as code outside backticks reads as prose: the mod
+  cannot tell `requests` in "install requests" from the English word.
+- friction declines sentence-level deletions in a sentence that holds
+  code, so "It is important to note that the `load()` helper…" keeps its
+  opener.
 - When friction would delete a reply block whole (a closer on its own),
   the block stays as written: an empty text block is no reply.
 - If friction fails or is missing, the reply is stored as written, and the
